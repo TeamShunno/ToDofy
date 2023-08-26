@@ -16,67 +16,72 @@
  * - Team Shunno
  *   https://www.facebook.com/TeamShunno/
  */
+package teamshunno.todofy
 
-package teamshunno.todofy;
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.text.InputType
+import android.view.ViewGroup
+import android.widget.AdapterView.OnItemClickListener
+import android.widget.AdapterView.OnItemLongClickListener
+import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.gson.Gson
+import teamshunno.todofy.databinding.ActivityMainBinding
 
-import android.app.PendingIntent;
-import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.os.Bundle;
-import android.support.design.widget.FloatingActionButton;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
-import android.support.v7.app.AlertDialog;
-import android.support.v7.app.AppCompatActivity;
-import android.text.InputType;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ListView;
-import android.widget.Toast;
-
-import com.google.gson.Gson;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-
-public class MainActivity extends AppCompatActivity {
+class MainActivity : AppCompatActivity() {
+    companion object {
+        const val NOTIFICATION_CHANNEL_DEFAULT = "default"
+    }
 
     /**
      * Object Declaration
      */
-    ListView listView;
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var database: ArrayList<String>
+    private lateinit var adapter: ArrayAdapter<String>
+    private lateinit var sharedPreferences: SharedPreferences
 
-    FloatingActionButton fabAdd, fabAbout;
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { isGranted: Boolean ->
+            if (!isGranted) {
+                Toast.makeText(
+                    this,
+                    "Without notification permission some feature not work!",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
 
-    Context mContext;
-
-    ArrayList<String> database;
-
-    SharedPreferences sharedPreferences;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         // Object Initialization
-        mContext = MainActivity.this;
-
-        listView = findViewById(R.id.listView);
-
-        fabAdd = findViewById(R.id.fabAdd);
-        fabAbout = findViewById(R.id.fabAbout);
-
-        sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+        sharedPreferences = getSharedPreferences(packageName, MODE_PRIVATE)
 
         // Data source
-        database = new ArrayList<>();
+        database = ArrayList()
 
         // Some Garbage Data for Testing
 //        database.add("Some Important Task");
@@ -84,256 +89,282 @@ public class MainActivity extends AppCompatActivity {
 //        database.add("Some Urgent Task");
 
         // Initialize Adapter
-        final ArrayAdapter<String> adapter = new ArrayAdapter<>(mContext, android.R.layout.simple_list_item_1, database);
+        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, database)
+        binding.listView.adapter = adapter
 
-        listView.setAdapter(adapter);
+        initViews()
+        checkNotificationPermission()
+    }
 
+    override fun onStart() {
+        super.onStart()
+        /**
+         * Load Data
+         */
+        val data = sharedPreferences.getString("database", null)
+        if (data != null && database.isEmpty()) {
+            val gson = Gson()
+            val tempData = gson.fromJson(data, Array<String>::class.java)
+            database.addAll(listOf(*tempData))
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        /**
+         * Save Data
+         */
+        val gson = Gson()
+        val data = gson.toJson(database)
+        val spe = sharedPreferences.edit()
+        spe.putString("database", data)
+        spe.apply()
+    }
+
+    private fun initViews() {
         /**
          * Click Events Start Here :)
          */
-        fabAdd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+        binding.fabAdd.setOnClickListener {
+            val addAlertDialog = MaterialAlertDialogBuilder(this)
+            addAlertDialog.setTitle("New To-Do")
 
-                AlertDialog.Builder adbAdd = new AlertDialog.Builder(mContext);
-                adbAdd.setTitle("New To-Do");
+            /**
+             * Create The View
+             */
+            val layout = LinearLayout(this)
+            val params = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            layout.layoutParams = params
+            layout.orientation = LinearLayout.VERTICAL
+            layout.setPadding(dpToPx(20), 0, dpToPx(20), 0)
 
-                /**
-                 * Create The View
-                 */
-                LinearLayout layout = new LinearLayout(mContext);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                layout.setLayoutParams(params);
+            val editText = TextInputEditText(this)
+            editText.hint = "Write new To-Do here"
+            editText.inputType = InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            editText.setLines(1)
+            editText.maxLines = 1
+            editText.setSingleLine()
+            layout.addView(editText)
 
-                layout.setOrientation(LinearLayout.VERTICAL);
-                layout.setPadding(dpToPx(20), 0, dpToPx(20), 0);
-
-                final EditText editText = new EditText(mContext);
-                editText.setHint("Write new To-Do here");
-                editText.setInputType(InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-                editText.setLines(1);
-                editText.setMaxLines(1);
-                editText.setSingleLine();
-
-                layout.addView(editText);
-
-                // Add the view
-                adbAdd.setView(layout);
-
-                adbAdd.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        // Nothing will happened!
-                    }
-                });
-                adbAdd.setPositiveButton("Add", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        String inputText = editText.getText().toString();
-
-                        if (!inputText.isEmpty()) {
-                            database.add(inputText);
-                            adapter.notifyDataSetChanged();
-                        } else {
-                            Toast.makeText(mContext, "Please enter some text!", Toast.LENGTH_LONG).show();
-                        }
-                    }
-                });
-                adbAdd.show();
-
+            // Add the view
+            addAlertDialog.setView(layout)
+            addAlertDialog.setNegativeButton("Cancel") { _, _ ->
+                // Nothing will happened!
             }
-        });
+            addAlertDialog.setPositiveButton("Add") { _, _ ->
+                val inputText = editText.text.toString()
+                if (!inputText.isEmpty()) {
+                    database.add(inputText)
+                    adapter.notifyDataSetChanged()
+                } else {
+                    Toast.makeText(this, "Please enter some text!", Toast.LENGTH_LONG)
+                        .show()
+                }
+            }
+            addAlertDialog.show()
+        }
 
         /**
          * List View Events
          */
-        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(AdapterView<?> parent, View view, final int position, long id) {
+        binding.listView.onItemLongClickListener =
+            OnItemLongClickListener { _, _, position, _ ->
+                val alertDialog = MaterialAlertDialogBuilder(this)
+                alertDialog.setTitle("What do you want?")
+                alertDialog.setNegativeButton("Nothing") { _, _ ->
+                    // Do Nothing!
+                }
+                alertDialog.setPositiveButton("Edit") { _, _ ->
+                    val editAlertDialog = MaterialAlertDialogBuilder(this)
+                    editAlertDialog.setTitle("Edit To-Do")
 
-                AlertDialog.Builder adbItemLong = new AlertDialog.Builder(mContext);
+                    /**
+                     * Create The View
+                     */
+                    val layout = LinearLayout(this)
+                    val params = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    layout.layoutParams = params
+                    layout.orientation = LinearLayout.VERTICAL
+                    layout.setPadding(dpToPx(20), 0, dpToPx(20), 0)
 
-                adbItemLong.setTitle("What do you want?");
-                adbItemLong.setNegativeButton("Nothing", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        // Do Nothing!
+                    val editText = EditText(this)
+                    editText.hint = "Write updated To-Do here"
+                    editText.inputType = InputType.TYPE_TEXT_FLAG_CAP_WORDS
+                    editText.setLines(1)
+                    editText.maxLines = 1
+                    editText.setSingleLine()
+                    editText.setText(database[position])
+                    layout.addView(editText)
+
+                    // Add the view
+                    editAlertDialog.setView(layout)
+                    editAlertDialog.setNegativeButton("Cancel") { _, _ ->
+                        // Nothing will happened!
                     }
-                });
-                adbItemLong.setPositiveButton("Edit", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-
-                        AlertDialog.Builder adbAdd = new AlertDialog.Builder(mContext);
-                        adbAdd.setTitle("Edit To-Do");
-
-                        /**
-                         * Create The View
-                         */
-                        LinearLayout layout = new LinearLayout(mContext);
-                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                        layout.setLayoutParams(params);
-
-                        layout.setOrientation(LinearLayout.VERTICAL);
-                        layout.setPadding(dpToPx(20), 0, dpToPx(20), 0);
-
-                        final EditText editText = new EditText(mContext);
-                        editText.setHint("Write updated To-Do here");
-                        editText.setInputType(InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-                        editText.setLines(1);
-                        editText.setMaxLines(1);
-                        editText.setSingleLine();
-
-                        editText.setText(database.get(position));
-
-                        layout.addView(editText);
-
-                        // Add the view
-                        adbAdd.setView(layout);
-
-                        adbAdd.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                // Nothing will happened!
-                            }
-                        });
-                        adbAdd.setPositiveButton("Update", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                String inputText = editText.getText().toString();
-
-                                if (!inputText.isEmpty()) {
-                                    database.set(position, inputText);
-                                    adapter.notifyDataSetChanged();
-                                } else {
-                                    Toast.makeText(mContext, "Please enter some text!", Toast.LENGTH_LONG).show();
-                                }
-                            }
-                        });
-                        adbAdd.show();
-
+                    editAlertDialog.setPositiveButton("Update") { _, _ ->
+                        val inputText = editText.text.toString()
+                        if (!inputText.isEmpty()) {
+                            database[position] = inputText
+                            adapter.notifyDataSetChanged()
+                        } else {
+                            Toast.makeText(this, "Please enter some text!", Toast.LENGTH_LONG)
+                                .show()
+                        }
                     }
-                });
-                adbItemLong.setNeutralButton("Delete", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-
-                        database.remove(position);
-                        adapter.notifyDataSetChanged();
-
-                    }
-                });
-                adbItemLong.show();
-
-                return true;
+                    editAlertDialog.show()
+                }
+                alertDialog.setNeutralButton("Delete") { _, _ ->
+                    database.removeAt(position)
+                    adapter.notifyDataSetChanged()
+                }
+                alertDialog.show()
+                true
             }
-        });
 
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, final int position, long id) {
-                AlertDialog.Builder single_click_adb = new AlertDialog.Builder(mContext);
-                single_click_adb.setTitle("Show in Notification?");
-                single_click_adb.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
+        binding.listView.onItemClickListener = OnItemClickListener { _, _, position, _ ->
+            val alertDialog = MaterialAlertDialogBuilder(this)
+            alertDialog.setTitle("Show in Notification?")
+            alertDialog.setNegativeButton("Cancel") { _, _ -> }
+            alertDialog.setPositiveButton("Yes") { _, _ ->
+                val notificationManager = NotificationManagerCompat.from(this)
 
-                    }
-                });
-                single_click_adb.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
+                // Crate channel if not already created.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    notificationManager
+                        .getNotificationChannel(NOTIFICATION_CHANNEL_DEFAULT) == null
+                ) {
+                    val channel = NotificationChannel(
+                        NOTIFICATION_CHANNEL_DEFAULT,
+                        "General notification",
+                        NotificationManager.IMPORTANCE_DEFAULT
+                    )
+                    channel.description = "All general notifications"
+                    channel.setSound(null, null)
+                    notificationManager.createNotificationChannel(channel)
+                }
 
-                        NotificationCompat.Builder notification = new NotificationCompat.Builder(mContext, "default-channel");
-                        notification
-                                .setSmallIcon(R.drawable.ic_ts_todofy_white)
-                                .setColor(getResources().getColor(R.color.colorPrimary))
-                                .setContentTitle(getTitle())
-                                .setContentText(database.get(position))
-                                .setStyle(new NotificationCompat.BigTextStyle()
-                                        .bigText(database.get(position)));
+                // Initialize the notification.
+                val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_DEFAULT)
+                notification
+                    .setSmallIcon(R.drawable.ic_notification_icon)
+                    .setColor(ContextCompat.getColor(this, R.color.colorPrimary))
+                    .setContentTitle(title)
+                    .setContentText(database[position])
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .bigText(database[position])
+                    )
 
-                        Intent sendIntent = new Intent();
-                        sendIntent.setAction(Intent.ACTION_SEND);
-                        sendIntent.putExtra(Intent.EXTRA_TEXT, database.get(position));
-                        sendIntent.setType("text/plain");
+                val sendIntent = Intent()
+                sendIntent.action = Intent.ACTION_SEND
+                sendIntent.putExtra(Intent.EXTRA_TEXT, database[position])
+                sendIntent.type = "text/plain"
 
-                        PendingIntent pendingShareIntent = PendingIntent.getActivity(mContext, 0, Intent.createChooser(sendIntent, "Share To Do..."),
-                                PendingIntent.FLAG_UPDATE_CURRENT);
+                val pendingShareIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent.createChooser(sendIntent, "Share To Do..."),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val action = NotificationCompat.Action(
+                    R.drawable.ic_share_black_24dp,
+                    "Share",
+                    pendingShareIntent
+                )
+                notification.addAction(action)
 
+                // Show notification
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    checkNotificationPermission()
 
-                        NotificationCompat.Action action = new NotificationCompat.Action(R.drawable.ic_share_black_24dp, "Share", pendingShareIntent);
-                        notification.addAction(action);
-
-                        NotificationManagerCompat notificationManagerCompat = NotificationManagerCompat.from(mContext);
-
-                        notificationManagerCompat.notify(position, notification.build());
-
-                    }
-                });
-                single_click_adb.show();
+                    Toast.makeText(
+                        this,
+                        "Notification permission is not granted.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    notificationManager.notify(position, notification.build())
+                }
             }
-        });
+
+            alertDialog.show()
+        }
 
         /**
          * About
          */
-        fabAbout.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AlertDialog.Builder adb = new AlertDialog.Builder(mContext);
-                adb.setTitle(getTitle())
-                        .setMessage("Version " + BuildConfig.VERSION_NAME + "\n\n" +
-                                "A simple todo list app for the workshop\n\"Make an Android App with Us\"\n" +
-                                "conducted by Team Shunno.\n\n" +
-                                "facebook.com/TeamShunno\n" +
-                                "Copyright © Team Shunno.");
-                adb.setNegativeButton(getString(android.R.string.ok), new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-
-                    }
-                });
-                adb.show();
-            }
-        });
-
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-
-        /**
-         * Load Data
-         */
-        String data = sharedPreferences.getString("database", null);
-
-        if (data != null && database.isEmpty()) {
-            Gson gson = new Gson();
-            String[] tempData = gson.fromJson(data, String[].class);
-
-            database.addAll(Arrays.asList(tempData));
+        binding.fabAbout.setOnClickListener {
+            val dialog = MaterialAlertDialogBuilder(this)
+            dialog.setTitle(title)
+                .setMessage(
+                    """
+    Version ${BuildConfig.VERSION_NAME}
+    
+    A simple todo list app for the workshop
+    "Make an Android App with Us"
+    conducted by Team Shunno.
+    
+    facebook.com/TeamShunno
+    Copyright © Team Shunno.
+                    """.trimIndent()
+                )
+            dialog.setNegativeButton(getString(android.R.string.ok)) { _, _ -> }
+            dialog.show()
         }
-
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    // You can use the API that requires the permission.
+                }
 
-        /**
-         * Save Data
-         */
-        Gson gson = new Gson();
+                shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
+                    // In an educational UI, explain to the user why your app requires this
+                    // permission for a specific feature to behave as expected, and what
+                    // features are disabled if it's declined. In this UI, include a
+                    // "cancel" or "no thanks" button that lets the user continue
+                    // using your app without granting the permission.
+                    val builder = MaterialAlertDialogBuilder(this)
+                    builder.setTitle("Notification permission")
+                    builder.setMessage(
+                        "Please grant notification permission to show notifications."
+                    )
+                    builder.setPositiveButton("Ok") { _, _ ->
+                        requestNotificationPermissionLauncher.launch(
+                            Manifest.permission.POST_NOTIFICATIONS
+                        )
+                    }
+                    builder.setNegativeButton("Cancel") { _, _ ->
+                        /* no-op */
+                    }
+                    val dialog = builder.create()
+                    dialog.show()
+                }
 
-        String data = gson.toJson(database);
-
-        SharedPreferences.Editor spe = sharedPreferences.edit();
-
-        spe.putString("database", data);
-        spe.apply();
-
+                else -> {
+                    // You can directly ask for the permission.
+                    // The registered ActivityResultCallback gets the result of this request.
+                    requestNotificationPermissionLauncher.launch(
+                        Manifest.permission.POST_NOTIFICATIONS
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -341,8 +372,8 @@ public class MainActivity extends AppCompatActivity {
      * From:
      * https://stackoverflow.com/a/5255256/2263329
      */
-    public int dpToPx(int dp) {
-        final float scale = getResources().getDisplayMetrics().density;
-        return (int) (dp * scale + 0.5f);
+    private fun dpToPx(dp: Int): Int {
+        val scale = resources.displayMetrics.density
+        return (dp * scale + 0.5f).toInt()
     }
 }
